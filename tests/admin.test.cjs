@@ -107,3 +107,22 @@ test('malformed data never opens an administrative panel', async () => {
   app.sync({ id: 'admin' }); await app.flush();
   assert.equal(app.get('adminPanel').hidden, true);
 });
+test('a transient failure does not disable subsequent administrative refreshes', async () => {
+  let calls = 0;
+  const app = setup(async () => ++calls === 2 ? { error: { message: 'network' } } : { data: snapshot });
+  app.sync({ id: 'admin' }); await app.flush();
+  await app.panel.refresh();
+  assert.equal(app.get('adminPanel').hidden, true);
+  await app.panel.refresh();
+  assert.equal(calls, 3);
+  assert.equal(app.get('adminPanel').hidden, false);
+});
+test('an explicit authorization denial disables refresh until the next session check', async () => {
+  let calls = 0;
+  const app = setup(async () => ++calls === 1 ? { data: snapshot } : { error: { code: '42501' } });
+  app.sync({ id: 'admin' }); await app.flush();
+  await app.panel.refresh();
+  await app.panel.refresh();
+  assert.equal(calls, 2);
+  assert.equal(app.get('adminPanel').hidden, true);
+});

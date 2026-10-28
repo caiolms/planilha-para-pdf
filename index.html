@@ -28,7 +28,7 @@ window.APP_CONFIG = {
 };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
@@ -1216,6 +1216,7 @@ document.addEventListener('drop', e => e.preventDefault());
 </script>
 
 <script src="admin.js"></script>
+<script src="spreadsheet-reader.js"></script>
 <script>
 /* ================= Conta e limites ================= */
 const TOOL_IDS = { fp: 'fotos-pdf', pi: 'pdf-imagem', jp: 'juntar-pdf', dp: 'dividir-pdf', cf: 'converter-fotos', planilha: 'planilha-pdf' };
@@ -1320,6 +1321,7 @@ function limitText(){
 }
 function statusText(st){
   if (st === 'unavailable') return 'O serviço está indisponível. Recarregue a página e tente novamente.';
+  if (st === 'rate') return 'Muitas conversões em sequência. Aguarde um minuto e tente novamente.';
   if (st === 'loading') return 'Estamos conferindo sua sessão. Tente novamente em instantes.';
   if (st === 'declined-counted') return 'Download cancelado. A preparação já foi registrada no limite da sua conta.';
   if (st === 'declined') return 'Download cancelado. Toque no botão azul quando quiser.';
@@ -1376,6 +1378,7 @@ async function saveWithQuota(tool, blob, filename, retry){
       const m = String((e && e.message) || '');
       if (/fetch|network|Failed/i.test(m) || !navigator.onLine) return 'offline';
       if (/nao_autenticado|JWT/i.test(m)) return 'session';
+      if (/limite_frequencia/i.test(m)) return 'rate';
       return 'quota';
     }
     if (!r || !r.ok) return 'limit';
@@ -1646,36 +1649,12 @@ Auth.init();
   }
 
   /* ---------- Leitura dos arquivos ---------- */
-  function guessDelim(text){
-    const first = text.split(/\r?\n/).slice(0, 5).join('\n');
-    const c = { ';': 0, ',': 0, '\t': 0 };
-    let q = false;
-    for (const ch of first){ if (ch === '"') q = !q; else if (!q && ch in c) c[ch]++; }
-    return Object.keys(c).sort((a, b) => c[b] - c[a])[0];
-  }
-  function parseCSV(text, d){
-    const rows = []; let row = [], f = '', q = false;
-    for (let i = 0; i < text.length; i++){
-      const ch = text[i];
-      if (q){
-        if (ch === '"'){ if (text[i+1] === '"'){ f += '"'; i++; } else q = false; }
-        else f += ch;
-      } else if (ch === '"') q = true;
-      else if (ch === d){ row.push(f); f = ''; }
-      else if (ch === '\n' || ch === '\r'){
-        if (ch === '\r' && text[i+1] === '\n') i++;
-        row.push(f); rows.push(row); row = []; f = '';
-      } else f += ch;
-    }
-    if (f !== '' || row.length){ row.push(f); rows.push(row); }
-    return rows;
-  }
   function makeSheet(name, grid, r0, c0, colsMeta, rowsMeta){
     grid = grid.map(r => (r || []).map(v => v == null ? '' : String(v).replace(/\r\n?/g, '\n').trim()));
     const nCols = grid.reduce((m, r) => Math.max(m, r.length), 0);
     const keptRows = [];
     grid.forEach((r, i) => {
-      if (rowsMeta && rowsMeta[i] && rowsMeta[i].hidden) return;
+      if (rowsMeta && rowsMeta[i + r0] && rowsMeta[i + r0].hidden) return;
       if (r.some(v => v !== '')) keptRows.push(i);
     });
     const keptCols = [];
@@ -1687,9 +1666,10 @@ Auth.init();
       colNums: keptCols.map(c => c + c0),
       hidden: new Set()
     };
-    keptCols.forEach((c, j) => { if (colsMeta && colsMeta[c] && colsMeta[c].hidden) sheet.hidden.add(j); });
+    keptCols.forEach((c, j) => { if (colsMeta && colsMeta[c + c0] && colsMeta[c + c0].hidden) sheet.hidden.add(j); });
     return sheet;
   }
+  let loadRevision = 0;
   async function loadFile(file){
     $('#loadError').hidden = true;
     const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -1699,26 +1679,15 @@ Auth.init();
       return;
     }
     Loader.show({ title: 'Lendo a sua planilha', steps: SHEET_STEPS, step: 0, anim: 'sheet' });
+    const request = ++loadRevision;
     await frame();
+    if (request !== loadRevision) return;
     try {
-      const buf = await file.arrayBuffer();
+      const parsed = await window.readSpreadsheet(file, LIMITS);
+      if (request !== loadRevision) return;
       Loader.step(1); await frame();
-      let sheets;
-      if (['csv', 'tsv', 'txt'].includes(ext)){
-        let text = new TextDecoder('utf-8').decode(buf);
-        if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf);
-        text = text.replace(/^\uFEFF/, '');
-        sheets = [makeSheet(base, parseCSV(text, ext === 'tsv' ? '\t' : guessDelim(text)), 0, 0)];
-      } else {
-        const wb = XLSX.read(buf, { type: 'array' });
-        sheets = wb.SheetNames.map(n => {
-          const ws = wb.Sheets[n];
-          if (!ws || !ws['!ref']) return makeSheet(n, [], 0, 0);
-          const r = XLSX.utils.decode_range(ws['!ref']);
-          const grid = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: true });
-          return makeSheet(n, grid, r.s.r, r.s.c, ws['!cols'], ws['!rows']);
-        });
-      }
+      if (request !== loadRevision) return;
+      let sheets = parsed.map(s => makeSheet(s.name, s.grid, s.r0, s.c0, s.colsMeta, s.rowsMeta));
       sheets = sheets.filter(s => s.rows.length);
       if (!sheets.length) throw new Error('vazia');
       book = { fileName: base, sheets };
@@ -1740,7 +1709,12 @@ Auth.init();
       const target = $('#limitBox').hidden ? $('#step2') : $('#limitBox');
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e){
+      if (request !== loadRevision || e.message === 'cancelled') return;
       await Loader.hide();
+      if (e.message === 'limits' || e.message === 'timeout'){
+        showLoadError(e.message === 'timeout' ? 'A leitura demorou demais e foi encerrada. Divida a planilha em arquivos menores.' : 'A planilha ultrapassa os limites de leitura: 250 mil células, 50 mil linhas, 2.048 colunas ou 16 milhões de caracteres. Divida o arquivo e tente novamente.');
+        return;
+      }
       showLoadError(e.message === 'vazia'
         ? 'Essa planilha está vazia. Confira se escolheu o arquivo certo.'
         : 'Não foi possível abrir esse arquivo. Confira se é uma planilha do Excel, CSV ou OpenOffice e tente de novo.');

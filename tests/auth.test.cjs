@@ -172,3 +172,11 @@ test('failed logout keeps the account and displays a retry message', async () =>
   assert.match(app.elements.get('authErr').textContent, /Não foi possível sair/);
   assert.equal(app.elements.get('logoutBtn').disabled, false);
 });
+test('server throttling is surfaced without attempting a download', async () => {
+  let saved = 0;
+  const app = setup({ rpc: async () => ({ error: { message: 'limite_frequencia' } }),
+    save: async () => { saved++; return 'saved'; } });
+  app.setSession({ id: 'a' });
+  assert.equal(await app.saveWithQuota('fp'), 'rate');
+  assert.equal(saved, 0);
+});
