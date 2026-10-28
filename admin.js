@@ -3,7 +3,7 @@
   'use strict';
   window.createAdminPanel = function({ client, getUser }){
     const panel = document.getElementById('adminPanel');
-    let revision = 0, visible = false;
+    let revision = 0, authorized = false;
     const number = value => Number.isFinite(value) && value >= 0 ? value.toLocaleString('pt-BR') : 'Não disponível';
     const limit = value => value === 0 ? 'Sem limite' : number(value);
     const date = value => {
@@ -13,7 +13,6 @@
     };
     function clear(){
       panel.hidden = true;
-      visible = false;
       panel.querySelectorAll('[data-admin-value]').forEach(el => { el.textContent = ''; });
       document.getElementById('adminUsers').replaceChildren();
       document.getElementById('adminConversions').replaceChildren();
@@ -52,7 +51,7 @@
         c => date(c.criado_em), c => c.email || '—', c => c.ferramenta || '—'
       ]);
       panel.hidden = false;
-      visible = true;
+      authorized = true;
     }
     async function load(user, request){
       if (!client || !user) return;
@@ -61,6 +60,7 @@
         if (request !== revision || getUser()?.id !== user.id) return;
         if (error || !data || !Number.isFinite(data.usuarios_total) ||
             !Array.isArray(data.usuarios) || !Array.isArray(data.recentes)){
+          if (error && ['42501', 'PGRST301'].includes(error.code)) authorized = false;
           clear(); return;
         }
         render(data);
@@ -71,12 +71,13 @@
     return {
       sync(user){
         const request = ++revision;
+        authorized = false;
         clear();
         // Never call the SDK synchronously from its Auth callback.
         if (user) setTimeout(() => { if (request === revision) load(user, request); }, 0);
       },
       refresh(){
-        if (!visible) return;
+        if (!authorized) return;
         const user = getUser(), request = ++revision;
         clear();
         return load(user, request);
