@@ -964,7 +964,7 @@ dialog.priv::backdrop{background:rgba(15,15,15,.3)}
     <div class="faq">
       <h4 id="faq-conta">Uso grátis e conta</h4>
       <details><summary>Preciso criar uma conta para usar?</summary><div class="ans"><p>Não. Todo dia você pode fazer uma conversão grátis, sem conta nenhuma. A conta só é pedida quando você quiser converter mais vezes no mesmo dia.</p><p>Para criar, basta nome, e-mail, celular e uma senha. Depois, o aparelho lembra de você e não pede a senha toda vez.</p></div></details>
-      <details><summary>Quantas conversões grátis posso fazer?</summary><div class="ans"><p>Sem conta, uma por dia. Cada arquivo baixado conta como uma conversão, em qualquer ferramenta. O limite volta todo dia à meia-noite, no horário de Brasília.</p><p>A tela inicial sempre mostra quantas você ainda tem. Se você cancelar o download, a conversão não conta.</p></div></details>
+      <details><summary>Quantas conversões grátis posso fazer?</summary><div class="ans"><p>Sem conta, uma por dia. Cada arquivo baixado conta como uma conversão, em qualquer ferramenta. O limite volta todo dia à meia-noite, no horário de Brasília.</p><p>A tela inicial sempre mostra quantas você ainda tem. Sem conta, cancelar o download devolve a conversão grátis. Na conta, a preparação é registrada antes do download e conta mesmo se você cancelar.</p></div></details>
       <details><summary>Criei a conta. Preciso fazer a conversão de novo?</summary><div class="ans"><p>Não. Se você estava tentando baixar um arquivo quando o app pediu a conta, o download continua sozinho assim que você entra.</p><p>Se a confirmação por e-mail estiver ligada, primeiro abra o e-mail e toque no link. Depois é só tocar de novo no botão azul.</p></div></details>
       <details><summary>Esqueci a minha senha. E agora?</summary><div class="ans"><p>Toque em “Entrar”, no alto da página, e depois em “Esqueci minha senha”. Digite o seu e-mail e toque no link que chegar. Se não achar a mensagem, procure na pasta de spam.</p></div></details>
       <details><summary>Como saio da conta?</summary><div class="ans"><p>Toque no botão com o seu nome, no alto da página, e depois em “Sair da conta”.</p></div></details>
@@ -1190,6 +1190,8 @@ const sb = CONFIG_OK && window.supabase ? window.supabase.createClient(CFG.SUPAB
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 }) : null;
 let currentUser = null;
+let authReady = false;
+let savingWithQuota = false;
 let limiteConta = null; // 0 = sem limite; vem do banco
 
 /* Conversão grátis de quem não tem conta: contada só neste aparelho */
@@ -1203,19 +1205,40 @@ const Local = (() => {
 
 /* Limite de quem tem conta: conferido no banco */
 const Server = (() => {
-  let st = null;
+  let st = null, revision = 0, refreshRequest = 0;
   async function refresh(){
     if (!sb || !currentUser) return;
-    const { data, error } = await sb.rpc('status_conversoes');
-    if (!error && data){ st = data; renderQuota(); }
+    const userId = currentUser.id, epoch = revision, request = ++refreshRequest;
+    try {
+      const { data, error } = await sb.rpc('status_conversoes');
+      if (epoch !== revision || request !== refreshRequest || !currentUser || currentUser.id !== userId) return;
+      st = !error && validState(data) ? data : null;
+    } catch (e){
+      if (epoch !== revision || request !== refreshRequest) return;
+      st = null;
+    }
+    renderQuota();
+  }
+  function validState(data){
+    return !!data && (data.ilimitado === true ||
+      (Number.isFinite(data.restantes) && data.restantes >= 0 &&
+       Number.isFinite(data.limite) && data.limite >= 0));
   }
   async function consume(tool){
-    const { data, error } = await sb.rpc('registrar_conversao', { p_ferramenta: TOOL_IDS[tool] || tool });
+    if (!sb || !currentUser) throw new Error('nao_autenticado');
+    if (!Object.prototype.hasOwnProperty.call(TOOL_IDS, tool)) throw new Error('ferramenta_invalida');
+    const userId = currentUser.id, epoch = revision;
+    refreshRequest++;
+    const { data, error } = await sb.rpc('registrar_conversao', { p_ferramenta: TOOL_IDS[tool] });
+    if (epoch !== revision || !currentUser || currentUser.id !== userId) throw new Error('nao_autenticado');
     if (error) throw error;
+    if (!validState(data) || typeof data.ok !== 'boolean') throw new Error('resposta_invalida');
+    refreshRequest++;
     st = data; renderQuota();
     return data;
   }
-  return { refresh, consume, state: () => st, clear(){ st = null; }, canConvert: () => !st || st.ilimitado || st.restantes > 0 };
+  return { refresh, consume, state: () => st, clear(){ st = null; revision++; },
+    canConvert: () => !!st && (st.ilimitado === true || st.restantes > 0) };
 })();
 
 function contaPromessa(){
@@ -1234,7 +1257,7 @@ function renderQuota(){
   card.classList.remove('used', 'ok'); txt.textContent = '';
   if (currentUser){
     const st = Server.state();
-    if (!st){ card.hidden = true; return; }
+    if (!st){ card.hidden = false; icon.textContent = '⏳'; txt.textContent = 'Não foi possível confirmar seu limite. Tente converter novamente em instantes.'; return; }
     card.hidden = false;
     if (st.ilimitado){ card.classList.add('ok'); icon.textContent = '✅'; txt.textContent = 'Você está na sua conta: pode converter quantas vezes quiser.'; return; }
     const used = st.restantes <= 0;
@@ -1242,7 +1265,7 @@ function renderQuota(){
     else { card.classList.add('ok'); icon.textContent = '✅'; txt.textContent = st.restantes === 1 ? 'Você tem 1 conversão disponível hoje.' : 'Você tem ' + st.restantes + ' conversões disponíveis hoje.'; }
     return;
   }
-  if (!sb){ card.hidden = true; return; }
+  if (!sb){ card.hidden = false; icon.textContent = '⏳'; txt.textContent = 'O serviço está indisponível. Recarregue a página e tente novamente.'; return; }
   card.hidden = false;
   const r = Local.remaining();
   if (r > 0){
@@ -1259,6 +1282,9 @@ function limitText(){
   return 'Você já fez as ' + n + ' conversões de hoje. Amanhã, a partir da meia-noite, você pode fazer outras.';
 }
 function statusText(st){
+  if (st === 'unavailable') return 'O serviço está indisponível. Recarregue a página e tente novamente.';
+  if (st === 'loading') return 'Estamos conferindo sua sessão. Tente novamente em instantes.';
+  if (st === 'declined-counted') return 'Download cancelado. A preparação já foi registrada no limite da sua conta.';
   if (st === 'declined') return 'Download cancelado. Toque no botão azul quando quiser.';
   if (st === 'busy') return 'Já existe um pedido de download aberto. Confirme ou feche ele e tente de novo.';
   if (st === 'limit') return limitText();
@@ -1277,33 +1303,48 @@ function afterSaveNote(el){
 
 /* Antes de processar: libera, ou explica o que falta. retry = refaz a ação depois de entrar na conta */
 function gateCheck(retry){
-  if (!sb) return 'ok';
-  if (currentUser) return Server.canConvert() ? 'ok' : 'limit';
+  if (!sb) return 'unavailable';
+  if (!authReady) return 'loading';
+  if (currentUser){
+    if (!Server.state()){ Server.refresh(); return 'quota'; }
+    return Server.canConvert() ? 'ok' : 'limit';
+  }
   if (Local.remaining() > 0) return 'ok';
   Auth.open('signup', 'limit', retry);
   return 'needaccount';
 }
 /* Na hora de baixar: registra a conversão e entrega o arquivo */
 async function saveWithQuota(tool, blob, filename, retry){
-  if (!sb) return await saveFile(blob, filename);
-  if (!currentUser){
-    if (Local.remaining() <= 0){ Auth.open('signup', 'limit', retry); return 'needaccount'; }
-    Local.add(1);
-    const st = await saveFile(blob, filename);
-    if (st !== 'saved') Local.add(-1);
-    renderQuota();
-    return st;
-  }
-  let r;
-  try { r = await Server.consume(tool); }
-  catch (e){
-    const m = String((e && e.message) || '');
-    if (/fetch|network|Failed/i.test(m) || !navigator.onLine) return 'offline';
-    if (/nao_autenticado|JWT/i.test(m)) return 'session';
-    return 'quota';
-  }
-  if (!r || !r.ok) return 'limit';
-  return await saveFile(blob, filename);
+  if (!sb) return 'unavailable';
+  if (!authReady) return 'loading';
+  if (savingWithQuota) return 'busy';
+  savingWithQuota = true;
+  try {
+    if (!currentUser){
+      if (Local.remaining() <= 0){ Auth.open('signup', 'limit', retry); return 'needaccount'; }
+      Local.add(1);
+      let saved = false;
+      try {
+        const st = await saveFile(blob, filename);
+        saved = st === 'saved';
+        return st;
+      } finally {
+        if (!saved) Local.add(-1);
+        renderQuota();
+      }
+    }
+    let r;
+    try { r = await Server.consume(tool); }
+    catch (e){
+      const m = String((e && e.message) || '');
+      if (/fetch|network|Failed/i.test(m) || !navigator.onLine) return 'offline';
+      if (/nao_autenticado|JWT/i.test(m)) return 'session';
+      return 'quota';
+    }
+    if (!r || !r.ok) return 'limit';
+    const saved = await saveFile(blob, filename);
+    return saved === 'declined' ? 'declined-counted' : saved;
+  } finally { savingWithQuota = false; }
 }
 
 const Auth = (() => {
@@ -1378,7 +1419,7 @@ const Auth = (() => {
 
   async function submit(e){
     e.preventDefault();
-    if (!sb){ showErr('O app ainda não está ligado ao Supabase. Preencha SUPABASE_URL e SUPABASE_ANON_KEY no início do arquivo index.html.'); return; }
+    if (!sb){ showErr(statusText('unavailable')); return; }
     const email = el('aEmail').value.trim().toLowerCase(), senha = el('aSenha').value;
     const btn = el('authSubmit'), label = btn.textContent;
     if (mode !== 'newpass' && !emailOk(email)) return showErr('Digite um e-mail válido, como nome@gmail.com.', el('aEmail'));
@@ -1420,7 +1461,9 @@ const Auth = (() => {
   }
 
   function setUser(user){
+    if (!currentUser || !user || currentUser.id !== user.id) Server.clear();
     currentUser = user || null;
+    authReady = true;
     qs('#loginBtn').hidden = !!currentUser;
     qs('#heroAuth').hidden = !!currentUser;
     qs('#accountWrap').hidden = !currentUser;
@@ -1428,7 +1471,8 @@ const Auth = (() => {
       const meta = currentUser.user_metadata || {};
       qs('#accName').textContent = (meta.nome || currentUser.email || '').split(' ')[0];
       qs('#accEmail').textContent = currentUser.email || '';
-      Server.refresh();
+      // Auth callbacks run while the SDK holds its session lock.
+      setTimeout(() => Server.refresh(), 0);
       if (!el('authView').hidden && mode !== 'newpass'){
         close();
         if (pendingRetry){ const f = pendingRetry; pendingRetry = null; setTimeout(f, 250); }
@@ -1456,7 +1500,9 @@ const Auth = (() => {
       el('aShow').setAttribute('aria-pressed', show);
     });
     const dlg = el('privDialog');
-    el('privContato').textContent = 'Para corrigir ou apagar os seus dados, escreva para ' + (CFG.CONTATO_EMAIL || '[SEU E-MAIL DE CONTATO]') + '.';
+    const contact = String(CFG.CONTATO_EMAIL || '').trim();
+    el('privContato').hidden = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
+    el('privContato').textContent = el('privContato').hidden ? '' : 'Para corrigir ou apagar os seus dados, escreva para ' + contact + '.';
     el('openPriv').addEventListener('click', () => { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', ''); });
     el('closePriv').addEventListener('click', () => dlg.close ? dlg.close() : dlg.removeAttribute('open'));
     qs('#loginBtn').addEventListener('click', () => open('login'));
@@ -1466,15 +1512,32 @@ const Auth = (() => {
     const accBtn = el('accBtn'), accMenu = el('accMenu');
     accBtn.addEventListener('click', e => { e.stopPropagation(); const o = !accMenu.classList.contains('open'); accMenu.classList.toggle('open', o); accBtn.setAttribute('aria-expanded', o); });
     document.addEventListener('click', e => { if (!accMenu.contains(e.target) && e.target !== accBtn){ accMenu.classList.remove('open'); accBtn.setAttribute('aria-expanded', 'false'); } });
-    el('logoutBtn').addEventListener('click', async () => { accMenu.classList.remove('open'); await sb.auth.signOut(); });
+    el('logoutBtn').addEventListener('click', async () => {
+      const btn = el('logoutBtn');
+      btn.disabled = true;
+      try {
+        if (!sb) throw new Error('unavailable');
+        const { error } = await sb.auth.signOut();
+        if (error) throw error;
+        setUser(null);
+        accMenu.classList.remove('open');
+      } catch (err){
+        open('login');
+        showErr('Não foi possível sair da conta. Confira sua conexão e tente novamente.');
+      } finally { btn.disabled = false; }
+    });
 
     if (!sb){ setUser(null); console.warn('Conversor: preencha SUPABASE_URL e SUPABASE_ANON_KEY no início do index.html para ligar as contas.'); return; }
     sb.rpc('config_publica').then(({ data }) => { if (data && data.limite_conta != null){ limiteConta = Number(data.limite_conta); renderQuota(); } });
+    let authEventSeen = false;
     sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY'){ open('newpass'); return; }
+      authEventSeen = true;
+      if (event === 'PASSWORD_RECOVERY') open('newpass');
       setUser(session && session.user);
     });
-    sb.auth.getSession().then(({ data }) => setUser(data.session && data.session.user));
+    sb.auth.getSession().then(({ data, error }) => {
+      if (!authEventSeen && !error) setUser(data.session && data.session.user);
+    }).catch(() => { /* Keep conversion blocked until the session can be checked. */ });
     document.addEventListener('visibilitychange', () => { if (!document.hidden){ if (currentUser) Server.refresh(); else renderQuota(); } });
   }
   return { init, open, close };
