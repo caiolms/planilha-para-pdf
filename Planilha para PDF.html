@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planilha para PDF</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#FFFFFF; --text:#37352F; --muted:#787774; --faint:#9B9A97;
+  --line:#E9E9E7; --hover:#F1F1EF; --soft:#F7F7F5;
+  --blue:#2383E2; --blue-dark:#0B6BCB; --blue-bg:#E7F3F8;
+  --yellow:#9F6B1F; --yellow-bg:#FBF3DB;
+  --red:#C4423D; --red-bg:#FDEBEC;
+  --green:#3B7351; --green-bg:#EDF3EC;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI Variable Display","Segoe UI",Helvetica,Arial,sans-serif;
+  font-size:17px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.page{max-width:900px; margin:0 auto; padding:48px 24px 96px}
+
+/* Barra do topo */
+body::before{content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top,0px); z-index:10; background:rgba(255,255,255,.92); backdrop-filter:blur(8px)}
+.topbar{position:sticky; top:env(safe-area-inset-top,0px); z-index:20; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line)}
+.topbar-in{max-width:900px; margin:0 auto; height:56px; padding:0 24px; display:flex; align-items:center; justify-content:space-between; gap:12px}
+.brand{display:flex; align-items:center; gap:8px; font-weight:600; font-size:16px}
+.brand span{font-size:20px}
+.menu-wrap{position:relative}
+.help-btn{display:flex; align-items:center; gap:8px; border:1px solid var(--line); background:var(--bg); border-radius:6px; padding:8px 14px; font-size:16px; font-weight:500}
+.help-btn:hover,.help-btn[aria-expanded="true"]{background:var(--hover)}
+.help-btn:focus-visible,.menu button:focus-visible,.drawer-close:focus-visible,.faq summary:focus-visible{outline:3px solid var(--blue); outline-offset:2px}
+.menu{position:absolute; right:0; top:calc(100% + 6px); width:280px; background:var(--bg); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 28px rgba(15,15,15,.12),0 1px 3px rgba(15,15,15,.06); padding:6px; display:none}
+.menu.open{display:block}
+.menu button{display:flex; gap:12px; align-items:flex-start; width:100%; text-align:left; border:none; background:transparent; border-radius:5px; padding:10px 10px; font-size:16px}
+.menu button:hover{background:var(--hover)}
+.menu button span.mi{font-size:20px; line-height:1.2}
+.menu button small{display:block; color:var(--muted); font-size:14px}
+
+/* Painel de ajuda */
+.overlay{position:fixed; inset:0; background:rgba(15,15,15,.28); z-index:30; opacity:0; pointer-events:none; transition:opacity .2s}
+.overlay.open{opacity:1; pointer-events:auto}
+.drawer{position:fixed; top:0; right:0; bottom:0; width:min(520px,100%); background:var(--bg); z-index:31; box-shadow:-8px 0 32px rgba(15,15,15,.14); transform:translateX(100%); transition:transform .25s ease; display:flex; flex-direction:column; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px)}
+.drawer.open{transform:none}
+.drawer-head{display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--line)}
+.drawer-head strong{font-size:18px}
+.drawer-close{border:none; background:transparent; font-size:16px; border-radius:6px; padding:8px 12px; color:var(--muted)}
+.drawer-close:hover{background:var(--hover); color:var(--text)}
+.drawer-body{overflow-y:auto; padding:8px 24px 40px}
+.drawer-body h3{font-size:21px; margin:26px 0 12px}
+.howto{margin:0; padding:0; list-style:none; counter-reset:s}
+.howto li{counter-increment:s; display:flex; gap:14px; padding:10px 0}
+.howto li::before{content:counter(s); flex:none; display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:var(--soft); border:1px solid var(--line); font-weight:600; color:var(--muted); font-size:15px}
+.howto p{margin:0}
+.howto p + p{color:var(--muted); font-size:15px}
+.faq{border-top:1px solid var(--line)}
+.faq details{border-bottom:1px solid var(--line)}
+.faq summary{cursor:pointer; list-style:none; padding:14px 4px 14px 28px; position:relative; font-weight:500}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::before{content:"▸"; position:absolute; left:6px; color:var(--muted); transition:transform .15s}
+.faq details[open] summary::before{transform:rotate(90deg)}
+.faq summary:hover{background:var(--soft)}
+.faq .ans{padding:0 4px 16px 28px; color:#4A4842}
+.faq .ans p{margin:0 0 8px}
+.legend{display:inline-block; padding:0 6px; border-radius:4px; font-weight:600; font-size:15px}
+.legend.red{background:var(--red-bg); color:var(--red)}
+.legend.yellow{background:var(--yellow-bg); color:var(--yellow)}
+.example-btn{margin-top:14px}
+body.locked{overflow:hidden}
+
+/* Carregamento */
+.loader{position:fixed; inset:0; z-index:40; background:rgba(255,255,255,.86); backdrop-filter:blur(3px); display:grid; place-items:center; opacity:0; pointer-events:none; transition:opacity .2s}
+.loader.open{opacity:1; pointer-events:auto}
+.loader-card{background:var(--bg); border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 40px rgba(15,15,15,.12); padding:28px 30px 24px; width:min(360px,calc(100% - 32px))}
+.sheet-anim{position:relative; display:grid; grid-template-columns:18px repeat(4,46px); grid-auto-rows:22px; width:max-content; margin:0 auto 22px; border-top:1px solid var(--line); border-left:1px solid var(--line); border-radius:3px}
+.sc{position:relative; border-right:1px solid var(--line); border-bottom:1px solid var(--line); background:var(--bg)}
+.sc.h{background:var(--soft); color:var(--faint); font-size:10px; display:grid; place-items:center}
+.sc i{position:absolute; left:6px; top:9px; height:4px; border-radius:2px; background:#9CC6EE; width:0; animation:fill 2.4s ease-in-out infinite; animation-delay:calc(var(--d) * 140ms)}
+@keyframes fill{0%{width:0} 30%{width:var(--w)} 75%{width:var(--w)} 100%{width:0}}
+.scan{position:absolute; width:47px; height:23px; left:18px; top:22px; border:2px solid var(--blue); border-radius:2px; background:rgba(35,131,226,.08); animation:scanx .9s steps(4) infinite, scany 3.6s steps(4) infinite}
+@keyframes scanx{from{left:18px} to{left:202px}}
+@keyframes scany{from{top:22px} to{top:110px}}
+.loader-title{font-size:19px; font-weight:600; text-align:center; margin:0 0 16px}
+.lsteps{list-style:none; margin:0; padding:0; display:grid; gap:9px}
+.lsteps li{display:flex; align-items:center; gap:10px; color:var(--faint); font-size:16px}
+.lsteps li::before{content:""; flex:none; width:18px; height:18px; border-radius:50%; border:2px solid var(--line)}
+.lsteps li.active{color:var(--text)}
+.lsteps li.active::before{border-color:var(--blue); border-right-color:transparent; animation:spin .8s linear infinite}
+.lsteps li.done{color:var(--muted)}
+.lsteps li.done::before{content:"✓"; border:none; background:var(--green-bg); color:var(--green); font-size:12px; font-weight:700; display:grid; place-items:center}
+.loader.short .lsteps li:nth-child(-n+2){display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .sc i{animation:none; width:var(--w)}
+  .scan{animation:none}
+  .lsteps li.active::before{animation:none; border-right-color:var(--blue)}
+}
+
+/* Avisos de limite */
+#limitBox{display:grid; gap:10px; margin-bottom:18px}
+.limit{display:flex; gap:12px; padding:16px 18px; border-radius:6px; border-left:4px solid var(--red); background:var(--red-bg)}
+.limit.warn{border-left-color:#D9A43B; background:var(--yellow-bg)}
+.limit .ci{font-size:22px; line-height:1.3}
+.limit p{margin:0}
+.limit p.lt{font-weight:600; color:var(--red); margin-bottom:4px}
+.limit.warn p.lt{color:var(--yellow)}
+.icon{font-size:64px; line-height:1; margin-bottom:12px}
+h1{font-size:40px; line-height:1.2; font-weight:700; margin:0 0 6px; letter-spacing:-0.01em}
+.lead{color:var(--muted); margin:0 0 40px; font-size:18px; max-width:62ch}
+section{margin-top:44px}
+h2{font-size:23px; font-weight:600; margin:0 0 14px; display:flex; align-items:center; gap:12px}
+.num{display:inline-grid; place-items:center; width:30px; height:30px; border-radius:50%; background:var(--soft); border:1px solid var(--line); font-size:16px; font-weight:600; color:var(--muted)}
+.done .num{background:var(--green-bg); color:var(--green); border-color:transparent}
+
+.drop{display:block; border:2px dashed #D3D1CB; border-radius:8px; padding:44px 24px; text-align:center; cursor:pointer; background:var(--bg); transition:background .15s,border-color .15s}
+.drop:hover,.drop.over{background:var(--soft); border-color:var(--blue)}
+.drop:focus-within{outline:3px solid var(--blue-bg); border-color:var(--blue)}
+.drop .big{font-size:44px; display:block; margin-bottom:8px}
+.drop strong{display:block; font-size:20px; font-weight:600}
+.drop span.sub{color:var(--muted)}
+.drop small{display:block; color:var(--faint); margin-top:10px; font-size:15px}
+
+.file{display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--line); border-radius:6px; flex-wrap:wrap}
+.file .fname{font-weight:600; word-break:break-word; flex:1; min-width:180px}
+.file .fmeta{color:var(--muted); font-size:15px; display:block; font-weight:400}
+
+button{font:inherit; color:inherit; cursor:pointer}
+.btn{border:1px solid var(--line); background:var(--bg); border-radius:6px; padding:9px 16px; font-size:16px}
+.btn:hover{background:var(--hover)}
+.btn:focus-visible,.seg button:focus-visible,.chip:focus-visible,th.col:focus-visible,.issue:focus-visible{outline:3px solid var(--blue); outline-offset:2px}
+.primary{background:var(--blue); color:#fff; border:none; border-radius:8px; padding:16px 30px; font-size:20px; font-weight:600}
+.primary:hover{background:var(--blue-dark)}
+.primary:disabled{background:#B9D7F3; cursor:wait}
+
+.callout{display:flex; gap:12px; padding:16px 18px; border-radius:6px; background:var(--soft); margin:0 0 18px}
+.callout .ci{font-size:22px; line-height:1.3}
+.callout.ok{background:var(--green-bg)}
+.callout.warn{background:var(--yellow-bg)}
+.callout.bad{background:var(--red-bg)}
+.callout p{margin:0}
+.callout p + p{margin-top:4px; color:var(--muted); font-size:16px}
+
+.chips{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px}
+.chip{border:1px solid var(--line); background:var(--bg); border-radius:20px; padding:6px 14px; font-size:16px}
+.chip[aria-pressed="true"]{background:var(--text); color:#fff; border-color:var(--text)}
+
+.issues{border:1px solid var(--line); border-radius:6px; margin-bottom:22px; overflow:hidden}
+.issues summary{padding:12px 16px; cursor:pointer; font-weight:600; list-style:none}
+.issues summary::-webkit-details-marker{display:none}
+.issues summary::before{content:"▸"; display:inline-block; width:20px; color:var(--muted); transition:transform .15s}
+.issues[open] summary::before{transform:rotate(90deg)}
+.issue{display:flex; gap:12px; width:100%; text-align:left; border:none; border-top:1px solid var(--line); background:var(--bg); padding:11px 16px; font-size:16px; align-items:flex-start}
+.issue:hover{background:var(--hover)}
+.tag{flex:none; font-size:14px; font-weight:600; padding:1px 8px; border-radius:4px; min-width:52px; text-align:center}
+.tag.red{background:var(--red-bg); color:var(--red)}
+.tag.yellow{background:var(--yellow-bg); color:var(--yellow)}
+.more{padding:10px 16px; color:var(--muted); border-top:1px solid var(--line); font-size:15px}
+
+.settings{display:grid; gap:18px; padding:18px 0 22px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin-bottom:22px}
+.field label.lbl{display:block; color:var(--muted); font-size:15px; margin-bottom:6px}
+.field input[type=text]{width:100%; max-width:520px; font:inherit; color:inherit; border:1px solid var(--line); border-radius:6px; padding:9px 12px; background:var(--bg)}
+.field input[type=text]:focus{outline:3px solid var(--blue-bg); border-color:var(--blue)}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:7px; padding:3px; gap:3px; flex-wrap:wrap; background:var(--soft)}
+.seg button{border:none; background:transparent; border-radius:5px; padding:8px 14px; font-size:16px; color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--bg); color:var(--text); box-shadow:0 0 0 1px var(--line); font-weight:600}
+.check{display:flex; align-items:center; gap:10px; cursor:pointer}
+.check input{width:20px; height:20px; accent-color:var(--blue)}
+
+.hint{color:var(--muted); font-size:15px; margin:0 0 8px}
+.tablewrap{overflow:auto; max-height:520px; border:1px solid var(--line); border-radius:6px}
+table{border-collapse:collapse; font-size:15px; min-width:100%}
+th,td{border:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; max-width:280px; white-space:pre-wrap; word-break:break-word}
+thead th{position:sticky; top:0; background:var(--soft); z-index:2}
+th.col{cursor:pointer; color:var(--muted); font-weight:500; font-size:14px; white-space:nowrap}
+th.col:hover{background:var(--hover)}
+th.col.off{color:var(--faint); text-decoration:line-through}
+td.rn,th.corner{background:var(--soft); color:var(--faint); font-size:13px; text-align:right; position:sticky; left:0; z-index:1}
+th.corner{z-index:3}
+tr.head td{font-weight:600; background:#FBFBFA}
+td.off{color:#C7C6C3; background:repeating-linear-gradient(135deg,#FAFAF9 0 6px,#F4F4F2 6px 12px)}
+td.red{background:var(--red-bg)}
+td.yellow{background:var(--yellow-bg)}
+td.flash{outline:3px solid var(--blue); outline-offset:-3px}
+.rowsnote{color:var(--muted); font-size:15px; margin-top:8px}
+
+.dlrow{display:flex; align-items:center; gap:20px; flex-wrap:wrap}
+.dlinfo{color:var(--muted); max-width:46ch}
+.msg{margin-top:14px; min-height:1.5em}
+.msg.ok{color:var(--green)} .msg.err{color:var(--red)}
+.error{background:var(--red-bg); color:var(--red); padding:14px 16px; border-radius:6px; margin-top:14px}
+.footer{margin-top:64px; color:var(--faint); font-size:14px}
+
+@media (max-width:600px){
+  .page{padding:40px 16px 72px}
+  h1{font-size:32px}
+  .primary{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand"><span aria-hidden="true">📄</span>Planilha para PDF</div>
+    <div class="menu-wrap">
+      <button class="help-btn" id="helpBtn" aria-haspopup="true" aria-expanded="false" aria-controls="helpMenu"><span aria-hidden="true">❓</span>Ajuda</button>
+      <div class="menu" id="helpMenu" role="menu">
+        <button role="menuitem" data-open="howto"><span class="mi" aria-hidden="true">🧭</span><span>Como usar<small>O passo a passo em três etapas</small></span></button>
+        <button role="menuitem" data-open="faq"><span class="mi" aria-hidden="true">💬</span><span>Perguntas frequentes<small>Dúvidas comuns e como resolver</small></span></button>
+        <button role="menuitem" data-open="example"><span class="mi" aria-hidden="true">🧪</span><span>Testar com uma planilha de exemplo<small>Para ver como funciona antes</small></span></button>
+      </div>
+    </div>
+  </div>
+</header>
+<main class="page">
+  <div class="icon" aria-hidden="true">📄</div>
+  <h1>Planilha para PDF</h1>
+  <p class="lead">Escolha a planilha, confira se está tudo no lugar e baixe o PDF pronto. O arquivo é lido aqui mesmo, sem ser enviado para nenhum lugar.</p>
+
+  <section id="step1">
+    <h2><span class="num">1</span>Escolha a planilha</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="fileInput" accept=".xlsx,.xlsm,.xls,.ods,.csv,.tsv,.txt" style="position:absolute;opacity:0;width:1px;height:1px">
+      <span class="big" aria-hidden="true">📂</span>
+      <strong>Clique aqui para escolher a planilha</strong>
+      <span class="sub">ou arraste o arquivo para cá</span>
+      <small>Funciona com Excel (.xlsx, .xls), CSV e OpenOffice (.ods)</small>
+    </label>
+    <div class="file" id="fileBox" hidden>
+      <span aria-hidden="true" style="font-size:26px">📊</span>
+      <span class="fname"><span id="fileName"></span><span class="fmeta" id="fileMeta"></span></span>
+      <button class="btn" id="changeFile">Trocar planilha</button>
+    </div>
+    <div class="error" id="loadError" hidden></div>
+  </section>
+
+  <section id="step2" hidden>
+    <h2><span class="num">2</span>Confira antes de exportar</h2>
+    <div id="limitBox" hidden aria-live="polite"></div>
+    <div class="chips" id="sheetTabs" hidden></div>
+    <div class="callout" id="summary"></div>
+    <details class="issues" id="issuesBox" hidden>
+      <summary id="issuesTitle"></summary>
+      <div id="issuesList"></div>
+    </details>
+
+    <div class="settings">
+      <div class="field">
+        <label class="lbl" for="title">Título no topo do PDF</label>
+        <input type="text" id="title" placeholder="Deixe em branco para não ter título">
+      </div>
+      <div class="field">
+        <span class="lbl" style="display:block;color:var(--muted);font-size:15px;margin-bottom:6px">Posição da folha</span>
+        <div class="seg" id="orient" role="group" aria-label="Posição da folha">
+          <button data-v="auto" aria-pressed="true">Automática</button>
+          <button data-v="portrait" aria-pressed="false">Em pé</button>
+          <button data-v="landscape" aria-pressed="false">Deitada</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="header" checked> A primeira linha é o cabeçalho (repete no topo de cada página)</label>
+      <label class="check" id="allWrap" hidden><input type="checkbox" id="allSheets"> Colocar todas as abas no mesmo PDF</label>
+    </div>
+
+    <p class="hint">Clique na letra de uma coluna para tirá-la do PDF. Clique de novo para trazer de volta.</p>
+    <div class="tablewrap"><table id="preview"></table></div>
+    <div class="rowsnote" id="rowsNote"></div>
+  </section>
+
+  <section id="step3" hidden>
+    <h2><span class="num">3</span>Baixe o PDF</h2>
+    <div class="dlrow">
+      <button class="primary" id="download">Baixar PDF</button>
+      <span class="dlinfo" id="dlInfo"></span>
+    </div>
+    <div class="msg" id="dlMsg" role="status"></div>
+  </section>
+
+  <p class="footer">Dica: se alguma palavra aparecer marcada em vermelho, deixar a folha deitada ou tirar colunas que não precisam ir para o PDF costuma resolver. Ficou com dúvida? Clique em Ajuda, no alto da página.</p>
+</main>
+
+<div class="loader" id="loader" role="status" aria-live="polite" aria-hidden="true">
+  <div class="loader-card">
+    <div class="sheet-anim" id="sheetAnim" aria-hidden="true"></div>
+    <p class="loader-title" id="loaderTitle">Lendo a sua planilha</p>
+    <ol class="lsteps">
+      <li>Abrindo o arquivo</li>
+      <li>Lendo as células</li>
+      <li>Conferindo se as palavras cabem</li>
+      <li>Montando o PDF</li>
+    </ol>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+  <div class="drawer-head">
+    <strong id="drawerTitle">Ajuda</strong>
+    <button class="drawer-close" id="drawerClose">Fechar ✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <h3 id="howto">Como usar</h3>
+    <ol class="howto">
+      <li><div><p>Clique na área tracejada e escolha a planilha no computador.</p><p>Também dá para arrastar o arquivo da pasta direto para a página.</p></div></li>
+      <li><div><p>Confira a tabela que aparece.</p><p>Se tiver algo marcado em vermelho ou amarelo, a lista acima da tabela mostra onde está e o que fazer.</p></div></li>
+      <li><div><p>Clique em Baixar PDF.</p><p>O arquivo vai para a pasta de downloads, com o mesmo nome do título.</p></div></li>
+    </ol>
+    <button class="btn example-btn" data-open="example">🧪 Testar com uma planilha de exemplo</button>
+
+    <h3 id="faq">Perguntas frequentes</h3>
+    <div class="faq">
+      <details><summary>Que tipos de arquivo posso usar?</summary><div class="ans"><p>Planilhas do Excel (.xlsx e .xls, inclusive as bem antigas), arquivos CSV e planilhas do OpenOffice ou LibreOffice (.ods).</p><p>Se a planilha estiver no Google Planilhas, abra ela e vá em Arquivo, Fazer download, Microsoft Excel. Depois é só escolher esse arquivo aqui.</p></div></details>
+      <details><summary>Minha planilha é enviada para a internet?</summary><div class="ans"><p>Não. A planilha é lida e transformada em PDF aqui mesmo, no seu navegador. Nenhum dado sai do seu computador.</p></div></details>
+      <details><summary>O que significam as marcações coloridas?</summary><div class="ans"><p><span class="legend red">Vermelho</span> quer dizer que algo vai sair errado no PDF: uma palavra que não cabe na coluna e será partida ao meio, ou um erro de fórmula, como #DIV/0!.</p><p><span class="legend yellow">Amarelo</span> é só um aviso: um texto muito comprido que vai ocupar várias linhas, ou um emoji que o PDF não consegue mostrar.</p><p>Passe o mouse sobre a célula marcada para ler o motivo.</p></div></details>
+      <details><summary>Uma palavra ficou em vermelho. Como resolvo?</summary><div class="ans"><p>Tente nesta ordem:</p><p>1. Em Posição da folha, escolha Deitada. A folha fica mais larga e as colunas ganham espaço.</p><p>2. Tire do PDF as colunas que não são necessárias, clicando na letra delas.</p><p>3. Se ainda não couber, abra a planilha no Excel e encurte o texto daquela célula, ou coloque espaços em textos muito grudados, como links e códigos.</p><p>Também dá para baixar assim mesmo: a palavra só vai aparecer quebrada em duas linhas.</p></div></details>
+      <details><summary>Um erro de fórmula foi marcado. O que é isso?</summary><div class="ans"><p>Códigos como #DIV/0!, #REF! ou #N/D aparecem quando alguma conta da planilha não deu certo, por exemplo uma divisão por zero ou uma célula apagada.</p><p>O app não muda o conteúdo da planilha. Para corrigir, abra o arquivo no Excel, conserte a fórmula, salve e escolha o arquivo de novo.</p></div></details>
+      <details><summary>A letra do PDF ficou muito pequena. O que faço?</summary><div class="ans"><p>Isso acontece quando a planilha tem muitas colunas. O app diminui a letra para tudo caber na largura da folha.</p><p>Para a letra crescer, escolha a folha Deitada e tire as colunas que não precisam ir para o PDF.</p></div></details>
+      <details><summary>Como tiro uma coluna do PDF?</summary><div class="ans"><p>Clique na letra da coluna (A, B, C…) no topo da tabela de conferência. Ela fica riscada e não vai para o PDF. Para trazer de volta, clique de novo.</p></div></details>
+      <details><summary>Sumiram linhas ou colunas da minha planilha. Por quê?</summary><div class="ans"><p>Linhas e colunas totalmente vazias são retiradas para o PDF não ficar com buracos.</p><p>O que estava oculto no Excel também fica de fora. Colunas ocultas aparecem riscadas e podem ser trazidas de volta com um clique na letra. Linhas ocultas precisam ser reexibidas no próprio Excel.</p></div></details>
+      <details><summary>Minha planilha tem várias abas. Dá para juntar tudo?</summary><div class="ans"><p>Dá. Quando o arquivo tem mais de uma aba, aparece a opção Colocar todas as abas no mesmo PDF. Cada aba começa numa página nova, com o nome dela no topo.</p></div></details>
+      <details><summary>As cores e as células mescladas não aparecem no PDF. É normal?</summary><div class="ans"><p>É. O app monta uma tabela limpa e fácil de ler, só com o conteúdo das células. Cores de fundo, negrito e células mescladas da planilha original não são copiados.</p></div></details>
+      <details><summary>Os números ou datas saíram diferentes do Excel. Por quê?</summary><div class="ans"><p>Em arquivos do Excel, o app usa os números do jeito que aparecem na tela do Excel, com a mesma formatação.</p><p>Em arquivos CSV não existe formatação, então os valores saem exatamente como estão escritos no arquivo. Se quiser datas e valores formatados, salve a planilha como .xlsx no Excel e use esse arquivo.</p></div></details>
+      <details><summary>Apareceu “Não foi possível abrir esse arquivo”. E agora?</summary><div class="ans"><p>Os motivos mais comuns são três: o arquivo não é uma planilha, a planilha tem senha, ou o arquivo está danificado.</p><p>Abra no Excel, tire a senha se houver, e use Salvar como, escolhendo Pasta de Trabalho do Excel (.xlsx). Depois escolha o arquivo novo aqui.</p></div></details>
+      <details><summary>Onde fica o PDF depois que eu baixo?</summary><div class="ans"><p>Na pasta de downloads do computador, que no Windows costuma se chamar Downloads ou Transferências. O nome do arquivo é o mesmo título que estiver escrito no passo 2.</p></div></details>
+      <details><summary>Posso mudar o título ou deixar o PDF sem título?</summary><div class="ans"><p>Pode. O título começa com o nome do arquivo, mas você pode apagar e escrever outro. Se deixar o campo em branco, o PDF sai sem título no topo.</p></div></details>
+      <details><summary>Existe um limite de tamanho?</summary><div class="ans"><p>Existe. O arquivo pode ter até 40 MB, e o PDF pode levar até 250 mil células com conteúdo, o que dá, por exemplo, 10 mil linhas com 25 colunas.</p><p>Também existe o limite da largura da folha: se as colunas não couberem lado a lado nem com a folha deitada e a letra no menor tamanho, o app avisa.</p><p>Em qualquer um desses casos, aparece um aviso no passo 2 explicando o que fazer. Na maioria das vezes, tirar colunas que não precisam ir para o PDF resolve.</p></div></details>
+      <details><summary>Funciona no celular?</summary><div class="ans"><p>Funciona, mas a conferência da tabela é mais confortável no computador, onde a tela é maior.</p></div></details>
+    </div>
+  </div>
+</aside>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const { jsPDF } = window.jspdf;
+  const meas = new jsPDF({ unit: 'pt' });
+
+  const MARGIN = 28, PAD = 4, SLACK = 1;
+  const SIZES = [10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6];
+  const PAGE_W = { portrait: 595.28, landscape: 841.89 };
+  const PREVIEW_ROWS = 300;
+  const ERR = /^#(DIV\/0!|N\/D|N\/A|REF!|VALOR!|VALUE!|NOME\?|NAME\?|NUM!|NULO!|NULL!|SPILL!|CALC!|DESPEJAR!)/i;
+  const OK_CHARS = '\\x09\\x0A\\x0D\\x20-\\x7E\\xA0-\\xFF\\u20AC\\u201A\\u0192\\u201E\\u2026\\u2020\\u2021\\u02C6\\u2030\\u0160\\u2039\\u0152\\u017D\\u2018\\u2019\\u201C\\u201D\\u2022\\u2013\\u2014\\u02DC\\u2122\\u0161\\u203A\\u0153\\u017E\\u0178';
+  const BAD_ALL = new RegExp('[^' + OK_CHARS + ']', 'g');
+  const BAD_ONE = new RegExp('[^' + OK_CHARS + ']');
+  const NUMERIC = /^[-+]?\s*(R\$|US\$|\$|€)?\s*[-+]?\(?[\d.,]+\)?\s*%?$/;
+
+  const opts = { orientation: 'auto', header: true, allSheets: false, title: '' };
+  let book = null, current = 0, lastDoc = null, results = [], timer = null;
+
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const clean = t => String(t == null ? '' : t).replace(BAD_ALL, '');
+  const addr = (s, i, j) => XLSX.utils.encode_col(s.colNums[j]) + s.rowNums[i];
+
+  /* ---------- Limites ---------- */
+  const LIMITS = { fileMB: 40, cells: 250000, pages: 300 };
+  const fmt = n => n.toLocaleString('pt-BR');
+  function checkLimits(usable){
+    const cells = sum(usable.map(r => r.sheet.rows.length * r.vis.length));
+    return { cells, block: cells > LIMITS.cells, wide: usable.filter(r => !r.L.fits) };
+  }
+  function renderLimit(lim, pages){
+    const box = $('#limitBox'), items = [];
+    if (lim.block) items.push({ lvl: 'bad',
+      title: 'Esta planilha passou do limite para virar PDF',
+      text: 'Ela tem ' + fmt(lim.cells) + ' células indo para o PDF, e o limite aqui é de ' + fmt(LIMITS.cells) + '. Para continuar, tire do PDF as colunas que não forem necessárias, clicando na letra delas' + (opts.allSheets ? ', desmarque a opção de juntar todas as abas' : '') + ', ou divida a planilha em arquivos menores no Excel.' });
+    if (lim.wide.length){
+      const r = lim.wide[0];
+      const where = (opts.allSheets && book.sheets.length > 1) ? ' (' + lim.wide.map(x => x.sheet.name).join(', ') + ')' : '';
+      const portrait = opts.orientation === 'portrait';
+      items.push({ lvl: 'bad',
+        title: 'A planilha passou da largura da folha' + where,
+        text: 'São ' + r.vis.length + ' colunas, e elas não cabem lado a lado ' + (portrait ? 'com a folha em pé, nem com a letra no menor tamanho legível' : 'nem com a folha deitada e a letra no menor tamanho legível') + '. Algumas palavras vão ser partidas ao meio e o PDF pode ficar difícil de ler. ' + (portrait ? 'Escolha a folha Deitada e, se ainda não couber, tire do PDF as colunas que não forem necessárias.' : 'Para resolver, tire do PDF as colunas que não forem necessárias, clicando na letra delas.') });
+    }
+    if (pages > LIMITS.pages) items.push({ lvl: 'warn',
+      title: 'O PDF vai ficar muito grande',
+      text: 'Serão ' + fmt(pages) + ' páginas. Ele pode demorar para abrir e para imprimir. Se não precisar de tudo, tire colunas ou divida a planilha.' });
+    box.hidden = !items.length; box.innerHTML = '';
+    items.forEach(it => {
+      const d = document.createElement('div');
+      d.className = 'limit ' + it.lvl;
+      d.innerHTML = '<span class="ci" aria-hidden="true">🚧</span><div><p class="lt"></p><p></p></div>';
+      const ps = d.querySelectorAll('p'); ps[0].textContent = it.title; ps[1].textContent = it.text;
+      box.appendChild(d);
+    });
+  }
+
+  /* ---------- Carregamento ---------- */
+  const loader = $('#loader');
+  let loaderStart = 0;
+  const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 40)));
+  (function buildSheetAnim(){
+    const w = [70, 45, 85, 55, 60, 80, 40, 65, 50, 75, 60, 45, 80, 55, 70, 50];
+    let h = '<span class="sc h"></span>';
+    for (let c = 0; c < 4; c++) h += '<span class="sc h">' + 'ABCD'[c] + '</span>';
+    for (let r = 0; r < 4; r++){
+      h += '<span class="sc h">' + (r + 1) + '</span>';
+      for (let c = 0; c < 4; c++) h += '<span class="sc"><i style="--d:' + (r + c) + ';--w:' + w[r * 4 + c] + '%"></i></span>';
+    }
+    $('#sheetAnim').innerHTML = h + '<span class="scan"></span>';
+  })();
+  function setStep(n){ loader.querySelectorAll('.lsteps li').forEach((li, i) => { li.className = i < n ? 'done' : i === n ? 'active' : ''; }); }
+  function showLoader(title, step, short){
+    $('#loaderTitle').textContent = title;
+    loader.classList.toggle('short', !!short);
+    setStep(step);
+    loader.classList.add('open'); loader.setAttribute('aria-hidden', 'false');
+    loaderStart = performance.now();
+  }
+  async function hideLoader(){
+    if (!loader.classList.contains('open')) return;
+    setStep(4);
+    const wait = (loader.classList.contains('short') ? 450 : 1200) - (performance.now() - loaderStart);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    loader.classList.remove('open'); loader.setAttribute('aria-hidden', 'true');
+  }
+  function showLoadError(t){ const el = $('#loadError'); el.textContent = t; el.hidden = false; }
+
+  /* ---------- Leitura dos arquivos ---------- */
+  function guessDelim(text){
+    const first = text.split(/\r?\n/).slice(0, 5).join('\n');
+    const c = { ';': 0, ',': 0, '\t': 0 };
+    let q = false;
+    for (const ch of first){ if (ch === '"') q = !q; else if (!q && ch in c) c[ch]++; }
+    return Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+  }
+  function parseCSV(text, d){
+    const rows = []; let row = [], f = '', q = false;
+    for (let i = 0; i < text.length; i++){
+      const ch = text[i];
+      if (q){
+        if (ch === '"'){ if (text[i+1] === '"'){ f += '"'; i++; } else q = false; }
+        else f += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === d){ row.push(f); f = ''; }
+      else if (ch === '\n' || ch === '\r'){
+        if (ch === '\r' && text[i+1] === '\n') i++;
+        row.push(f); rows.push(row); row = []; f = '';
+      } else f += ch;
+    }
+    if (f !== '' || row.length){ row.push(f); rows.push(row); }
+    return rows;
+  }
+  function makeSheet(name, grid, r0, c0, colsMeta, rowsMeta){
+    grid = grid.map(r => (r || []).map(v => v == null ? '' : String(v).replace(/\r\n?/g, '\n').trim()));
+    const nCols = grid.reduce((m, r) => Math.max(m, r.length), 0);
+    const keptRows = [];
+    grid.forEach((r, i) => {
+      if (rowsMeta && rowsMeta[i] && rowsMeta[i].hidden) return;
+      if (r.some(v => v !== '')) keptRows.push(i);
+    });
+    const keptCols = [];
+    for (let c = 0; c < nCols; c++) if (keptRows.some(i => (grid[i][c] || '') !== '')) keptCols.push(c);
+    const sheet = {
+      name,
+      rows: keptRows.map(i => keptCols.map(c => grid[i][c] || '')),
+      rowNums: keptRows.map(i => i + r0 + 1),
+      colNums: keptCols.map(c => c + c0),
+      hidden: new Set()
+    };
+    keptCols.forEach((c, j) => { if (colsMeta && colsMeta[c] && colsMeta[c].hidden) sheet.hidden.add(j); });
+    return sheet;
+  }
+  async function loadFile(file){
+    $('#loadError').hidden = true;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const base = file.name.replace(/\.[^.]+$/, '');
+    if (file.size > LIMITS.fileMB * 1048576){
+      showLoadError('Essa planilha tem ' + fmt(Math.round(file.size / 1048576)) + ' MB e passou do limite para virar PDF aqui, que é de ' + LIMITS.fileMB + ' MB. Divida a planilha em arquivos menores no Excel e escolha um de cada vez.');
+      return;
+    }
+    showLoader('Lendo a sua planilha', 0);
+    await frame();
+    try {
+      const buf = await file.arrayBuffer();
+      setStep(1); await frame();
+      let sheets;
+      if (['csv', 'tsv', 'txt'].includes(ext)){
+        let text = new TextDecoder('utf-8').decode(buf);
+        if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf);
+        text = text.replace(/^\uFEFF/, '');
+        sheets = [makeSheet(base, parseCSV(text, ext === 'tsv' ? '\t' : guessDelim(text)), 0, 0)];
+      } else {
+        const wb = XLSX.read(buf, { type: 'array' });
+        sheets = wb.SheetNames.map(n => {
+          const ws = wb.Sheets[n];
+          if (!ws || !ws['!ref']) return makeSheet(n, [], 0, 0);
+          const r = XLSX.utils.decode_range(ws['!ref']);
+          const grid = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: true });
+          return makeSheet(n, grid, r.s.r, r.s.c, ws['!cols'], ws['!rows']);
+        });
+      }
+      sheets = sheets.filter(s => s.rows.length);
+      if (!sheets.length) throw new Error('vazia');
+      book = { fileName: base, sheets };
+      current = 0;
+      opts.title = base;
+      $('#title').value = base;
+      opts.allSheets = false; $('#allSheets').checked = false;
+      $('#fileName').textContent = file.name;
+      const total = sheets.reduce((n, s) => n + s.rows.length, 0);
+      $('#fileMeta').textContent = total + (total === 1 ? ' linha' : ' linhas') + (sheets.length > 1 ? ' em ' + sheets.length + ' abas' : '');
+      $('#drop').hidden = true; $('#fileBox').hidden = false;
+      $('#step1').classList.add('done');
+      $('#step2').hidden = false; $('#step3').hidden = false;
+      $('#dlMsg').textContent = '';
+      renderTabs();
+      clearTimeout(timer);
+      await run(true);
+      await hideLoader();
+      const target = $('#limitBox').hidden ? $('#step2') : $('#limitBox');
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e){
+      await hideLoader();
+      showLoadError(e.message === 'vazia'
+        ? 'Essa planilha está vazia. Confira se escolheu o arquivo certo.'
+        : 'Não foi possível abrir esse arquivo. Confira se é uma planilha do Excel, CSV ou OpenOffice e tente de novo.');
+    }
+  }
+
+  /* ---------- Cálculo do encaixe ---------- */
+  function fit(minU, natU, orient){
+    const avail = PAGE_W[orient] - 2 * MARGIN;
+    for (const s of SIZES){
+      const mins = minU.map(u => u * s + 2 * PAD + SLACK);
+      const sumMin = sum(mins);
+      if (sumMin <= avail){
+        const nats = natU.map((u, k) => Math.max(u * s + 2 * PAD + SLACK, mins[k]));
+        const sumNat = sum(nats);
+        let widths;
+        if (sumNat <= avail) widths = nats;
+        else {
+          const extra = avail - sumMin, flex = nats.map((n, k) => n - mins[k]), sf = sum(flex) || 1;
+          widths = mins.map((m, k) => m + extra * flex[k] / sf);
+        }
+        return { orient, size: s, widths, fits: true, natural: sumNat <= avail };
+      }
+    }
+    // Não cabe nem com letra 6: colunas curtas mantêm a largura, só as largas são apertadas
+    const s = 6, mins = minU.map(u => u * s + 2 * PAD + SLACK), widths = mins.slice();
+    let left = avail, open = mins.map((_, k) => k), changed = true;
+    while (changed && open.length){
+      changed = false;
+      const share = left / open.length;
+      open = open.filter(k => { if (mins[k] <= share){ left -= mins[k]; changed = true; return false; } return true; });
+    }
+    open.forEach(k => { widths[k] = left / open.length; });
+    return { orient, size: s, widths, fits: false, natural: false };
+  }
+  const score = L => (L.fits ? 100 : 0) + L.size * 2 + (L.natural ? 3 : 0);
+
+  function analyze(sheet){
+    const vis = sheet.rows[0].map((_, j) => j).filter(j => !sheet.hidden.has(j));
+    if (!vis.length) return { sheet, vis, empty: true, issues: [] };
+    const minU = vis.map(() => 0), natU = vis.map(() => 0), info = [];
+    sheet.rows.forEach((row, i) => {
+      meas.setFont('helvetica', opts.header && i === 0 ? 'bold' : 'normal');
+      info[i] = vis.map((j, k) => {
+        const t = clean(row[j]);
+        if (!t) return null;
+        const lines = t.split('\n').map(l => meas.getStringUnitWidth(l));
+        let wu = 0, word = '';
+        for (const w of t.split(/\s+/)){ if (!w) continue; const u = meas.getStringUnitWidth(w); if (u > wu){ wu = u; word = w; } }
+        natU[k] = Math.max(natU[k], ...lines);
+        minU[k] = Math.max(minU[k], wu);
+        return { lines, wu, word };
+      });
+    });
+    let L;
+    if (opts.orientation !== 'auto') L = fit(minU, natU, opts.orientation);
+    else { const p = fit(minU, natU, 'portrait'), l = fit(minU, natU, 'landscape'); L = (!p.fits && !l.fits) || score(l) > score(p) ? l : p; }
+
+    const body = opts.header ? sheet.rows.slice(1) : sheet.rows;
+    const numeric = vis.map(j => {
+      const vals = body.map(r => r[j]).filter(v => v !== '');
+      return vals.length > 0 && vals.filter(v => NUMERIC.test(v)).length / vals.length >= 0.8;
+    });
+
+    const issues = [];
+    sheet.rows.forEach((row, i) => vis.forEach((j, k) => {
+      const raw = row[j];
+      if (!raw) return;
+      if (ERR.test(raw)) issues.push({ level: 'red', i, j, msg: 'Erro de fórmula na planilha (' + raw + '). Vai aparecer assim no PDF.' });
+      if (BAD_ONE.test(raw)) issues.push({ level: 'yellow', i, j, msg: 'Tem emoji ou símbolo que o PDF não consegue mostrar. Ele será retirado.' });
+      const c = info[i][k];
+      if (!c) return;
+      const inner = L.widths[k] - 2 * PAD - SLACK;
+      if (c.wu * L.size > inner + 0.5){
+        const w = c.word.length > 28 ? c.word.slice(0, 28) + '…' : c.word;
+        issues.push({ level: 'red', i, j, msg: 'A palavra “' + w + '” não cabe na largura da coluna e será partida ao meio.' });
+      } else {
+        const n = c.lines.reduce((t, u) => t + Math.max(1, Math.ceil(u * L.size / inner)), 0);
+        if (n >= 6) issues.push({ level: 'yellow', i, j, msg: 'Texto longo: vai ocupar cerca de ' + n + ' linhas dentro da célula.' });
+      }
+    }));
+    return { sheet, vis, L, numeric, issues };
+  }
+
+  /* ---------- PDF ---------- */
+  function buildPdf(list){
+    let doc = null;
+    list.forEach((R, idx) => {
+      if (R.empty) return;
+      if (!doc) doc = new jsPDF({ orientation: R.L.orient, unit: 'pt', format: 'a4' });
+      else doc.addPage('a4', R.L.orient);
+      let y = MARGIN;
+      doc.setTextColor(55, 53, 47);
+      const title = clean(opts.title.trim());
+      if (idx === 0 && title){ doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text(title, MARGIN, y + 14); y += 30; }
+      if (list.length > 1){ doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text(clean(R.sheet.name), MARGIN, y + 11); y += 22; }
+      const rows = R.sheet.rows.map(r => R.vis.map(j => clean(r[j])));
+      const columnStyles = {};
+      R.L.widths.forEach((w, k) => { columnStyles[k] = { cellWidth: w, halign: R.numeric[k] ? 'right' : 'left' }; });
+      doc.autoTable({
+        head: opts.header ? [rows[0]] : undefined,
+        body: opts.header ? rows.slice(1) : rows,
+        startY: y,
+        theme: 'grid',
+        margin: { top: MARGIN, right: MARGIN, bottom: MARGIN + 16, left: MARGIN },
+        tableWidth: sum(R.L.widths),
+        showHead: 'everyPage',
+        styles: { font: 'helvetica', fontSize: R.L.size, cellPadding: PAD, overflow: 'linebreak', valign: 'top', textColor: [55, 53, 47], lineColor: [221, 220, 216], lineWidth: 0.5 },
+        headStyles: { fillColor: [247, 247, 245], textColor: [55, 53, 47], fontStyle: 'bold' },
+        columnStyles
+      });
+    });
+    const n = doc.getNumberOfPages();
+    for (let p = 1; p <= n; p++){
+      doc.setPage(p);
+      const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(155, 154, 151);
+      doc.text('Página ' + p + ' de ' + n, w - MARGIN, h - MARGIN + 6, { align: 'right' });
+    }
+    return doc;
+  }
+
+  /* ---------- Tela ---------- */
+  function renderTabs(){
+    const box = $('#sheetTabs');
+    const many = book.sheets.length > 1;
+    box.hidden = !many; $('#allWrap').hidden = !many;
+    box.innerHTML = '';
+    if (!many) return;
+    book.sheets.forEach((s, idx) => {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.textContent = s.name;
+      b.setAttribute('aria-pressed', idx === current);
+      b.onclick = () => { current = idx; renderTabs(); refresh(); };
+      box.appendChild(b);
+    });
+  }
+
+  function refresh(now){
+    clearTimeout(timer);
+    $('#download').disabled = true;
+    $('#dlInfo').textContent = 'Conferindo a planilha…';
+    timer = setTimeout(async () => {
+      const big = visibleCells() > 30000;
+      if (big) showLoader('Atualizando o PDF', 2, true);
+      await run(big);
+      if (big) await hideLoader();
+    }, now ? 0 : 200);
+  }
+  function visibleCells(){
+    if (!book) return 0;
+    const sh = opts.allSheets ? book.sheets : [book.sheets[current]];
+    return sum(sh.map(s => s.rows.length * (s.rows[0].length - s.hidden.size)));
+  }
+
+  async function run(withLoader){
+    if (!book) return;
+    $('#download').disabled = true;
+    if (withLoader){ setStep(2); await frame(); }
+    const sheets = opts.allSheets ? book.sheets : [book.sheets[current]];
+    results = sheets.map(analyze);
+    const usable = results.filter(r => !r.empty);
+    renderPreview();
+    renderSummary(usable);
+    const lim = checkLimits(usable);
+    renderLimit(lim);
+    if (!usable.length){
+      lastDoc = null;
+      $('#dlInfo').textContent = 'Todas as colunas foram retiradas. Traga pelo menos uma de volta.';
+      return;
+    }
+    if (lim.block){
+      lastDoc = null;
+      $('#dlInfo').textContent = 'A planilha está acima do limite para virar PDF. Veja o aviso no passo 2.';
+      return;
+    }
+    if (withLoader){ setStep(3); await frame(); }
+    try {
+      lastDoc = buildPdf(usable);
+      const pages = lastDoc.getNumberOfPages();
+      renderLimit(lim, pages);
+      const L = usable[0].L;
+      const pos = usable.every(r => r.L.orient === L.orient) ? (L.orient === 'portrait' ? 'em pé' : 'deitada') : 'em pé e deitada, conforme a aba';
+      $('#dlInfo').textContent = 'O PDF terá ' + pages + (pages === 1 ? ' página' : ' páginas') + ', com a folha ' + pos + ' e letra tamanho ' + String(L.size).replace('.', ',') + '.';
+      $('#download').disabled = false;
+    } catch (e){
+      lastDoc = null;
+      $('#dlInfo').textContent = 'Não foi possível montar o PDF dessa planilha.';
+    }
+  }
+
+  function renderSummary(usable){
+    const all = [];
+    usable.forEach(r => r.issues.forEach(x => all.push(Object.assign({ R: r }, x))));
+    const reds = all.filter(x => x.level === 'red').length, yels = all.length - reds;
+    const box = $('#summary');
+    const small = usable.find(r => r.L.size < 8);
+    let cls, icon, line1, line2 = '';
+    if (!usable.length){ cls = 'warn'; icon = '⚠️'; line1 = 'Nenhuma coluna selecionada para o PDF.'; }
+    else if (!all.length){
+      cls = 'ok'; icon = '✅'; line1 = 'Tudo certo. Todas as palavras cabem dentro das colunas.';
+      line2 = small ? 'A letra ficou pequena por causa da quantidade de colunas. Tirar colunas deixa maior.' : 'É só baixar o PDF.';
+    } else if (reds){
+      cls = 'bad'; icon = '🔍'; line1 = reds + (reds === 1 ? ' célula precisa' : ' células precisam') + ' de atenção' + (yels ? ' e ' + yels + (yels === 1 ? ' pede' : ' pedem') + ' uma olhada.' : '.');
+      line2 = 'Você pode baixar assim mesmo, ou tentar a folha deitada e tirar colunas para melhorar.';
+    } else {
+      cls = 'warn'; icon = '👀'; line1 = yels + (yels === 1 ? ' célula pede' : ' células pedem') + ' uma olhada, mas nada vai ser cortado.';
+      line2 = 'Os pontos estão marcados em amarelo na tabela abaixo.';
+    }
+    box.className = 'callout ' + cls;
+    box.innerHTML = '<span class="ci" aria-hidden="true">' + icon + '</span><div><p></p><p></p></div>';
+    const ps = box.querySelectorAll('p'); ps[0].textContent = line1; ps[1].textContent = line2;
+    if (!line2) ps[1].remove();
+
+    const det = $('#issuesBox'), list = $('#issuesList');
+    det.hidden = !all.length; list.innerHTML = '';
+    if (!all.length) return;
+    all.sort((a, b) => (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1));
+    $('#issuesTitle').textContent = 'Ver os pontos marcados (' + all.length + ')';
+    all.slice(0, 60).forEach(x => {
+      const b = document.createElement('button');
+      b.className = 'issue';
+      const tag = document.createElement('span');
+      tag.className = 'tag ' + x.level; tag.textContent = addr(x.R.sheet, x.i, x.j);
+      const t = document.createElement('span');
+      t.textContent = (usable.length > 1 ? x.R.sheet.name + ': ' : '') + x.msg;
+      b.append(tag, t);
+      b.onclick = () => goTo(x);
+      list.appendChild(b);
+    });
+    if (all.length > 60){
+      const m = document.createElement('div'); m.className = 'more';
+      m.textContent = 'E mais ' + (all.length - 60) + ' pontos parecidos, todos marcados na tabela.';
+      list.appendChild(m);
+    }
+  }
+
+  function goTo(x){
+    const idx = book.sheets.indexOf(x.R.sheet);
+    if (idx !== current){ current = idx; renderTabs(); renderPreview(); }
+    const cell = document.getElementById('c-' + x.i + '-' + x.j);
+    if (!cell) return;
+    cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    cell.classList.add('flash');
+    setTimeout(() => cell.classList.remove('flash'), 1600);
+  }
+
+  function renderPreview(){
+    const sheet = book.sheets[current];
+    const res = results.find(r => r.sheet === sheet) || analyze(sheet);
+    const marks = {};
+    res.issues.forEach(x => { const k = x.i + ':' + x.j; if (marks[k] !== 'red') marks[k] = { level: x.level, msg: (marks[k] ? marks[k].msg + '\n' : '') + x.msg }; });
+    const table = $('#preview'); table.innerHTML = '';
+    const thead = document.createElement('thead'), htr = document.createElement('tr');
+    const corner = document.createElement('th'); corner.className = 'corner'; htr.appendChild(corner);
+    sheet.colNums.forEach((c, j) => {
+      const th = document.createElement('th');
+      const off = sheet.hidden.has(j);
+      th.className = 'col' + (off ? ' off' : '');
+      th.tabIndex = 0;
+      th.textContent = XLSX.utils.encode_col(c);
+      th.title = off ? 'Fora do PDF. Clique para trazer de volta.' : 'Clique para tirar esta coluna do PDF';
+      th.setAttribute('role', 'button');
+      th.setAttribute('aria-pressed', !off);
+      const toggle = () => { off ? sheet.hidden.delete(j) : sheet.hidden.add(j); refresh(); };
+      th.onclick = toggle;
+      th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); } };
+      htr.appendChild(th);
+    });
+    thead.appendChild(htr); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    sheet.rows.slice(0, PREVIEW_ROWS).forEach((row, i) => {
+      const tr = document.createElement('tr');
+      if (opts.header && i === 0) tr.className = 'head';
+      const rn = document.createElement('td'); rn.className = 'rn'; rn.textContent = sheet.rowNums[i]; tr.appendChild(rn);
+      row.forEach((v, j) => {
+        const td = document.createElement('td');
+        td.id = 'c-' + i + '-' + j;
+        td.textContent = v;
+        if (sheet.hidden.has(j)) td.className = 'off';
+        else if (marks[i + ':' + j]){ td.className = marks[i + ':' + j].level; td.title = marks[i + ':' + j].msg; }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    $('#rowsNote').textContent = sheet.rows.length > PREVIEW_ROWS
+      ? 'Mostrando as primeiras ' + PREVIEW_ROWS + ' de ' + sheet.rows.length + ' linhas. O PDF leva todas.'
+      : '';
+  }
+
+  /* ---------- Download ---------- */
+  function useCap(name){
+    if (!window.claude || typeof window.claude.use !== 'function') return Promise.resolve(null);
+    return Promise.race([window.claude.use(name).catch(() => null), new Promise(r => setTimeout(() => r(null), 4000))]);
+  }
+  function plainDownload(blob, filename){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  async function download(){
+    if (!lastDoc) return;
+    const msg = $('#dlMsg'); msg.className = 'msg'; msg.textContent = '';
+    const name = (opts.title.trim() || book.fileName).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'planilha';
+    const filename = name + '.pdf';
+    const blob = lastDoc.output('blob');
+    const btn = $('#download'); btn.disabled = true;
+    try {
+      const dl = await useCap('downloads');
+      if (dl){
+        try { await dl.save({ filename, data: blob }); msg.className = 'msg ok'; msg.textContent = 'Pronto. O PDF “' + filename + '” foi baixado.'; }
+        catch (e){
+          if (e && e.code === 'declined'){ msg.textContent = 'Download cancelado. Clique em Baixar PDF quando quiser.'; }
+          else if (e && e.code === 'rate_limited'){ msg.textContent = 'Já existe um pedido de download aberto. Confirme ou feche ele e tente de novo.'; }
+          else { plainDownload(blob, filename); msg.className = 'msg ok'; msg.textContent = 'Pronto. O PDF foi baixado.'; }
+        }
+      } else { plainDownload(blob, filename); msg.className = 'msg ok'; msg.textContent = 'Pronto. O PDF “' + filename + '” foi baixado.'; }
+      $('#step3').classList.add('done');
+    } finally { btn.disabled = false; }
+  }
+
+  /* ---------- Eventos ---------- */
+  const input = $('#fileInput'), drop = $('#drop');
+  input.addEventListener('change', () => { if (input.files[0]) loadFile(input.files[0]); input.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+  $('#changeFile').onclick = () => input.click();
+  $('#title').addEventListener('input', e => { opts.title = e.target.value; refresh(); });
+  $('#header').addEventListener('change', e => { opts.header = e.target.checked; refresh(); });
+  $('#allSheets').addEventListener('change', e => { opts.allSheets = e.target.checked; refresh(); });
+  document.querySelectorAll('#orient button').forEach(b => b.addEventListener('click', () => {
+    opts.orientation = b.dataset.v;
+    document.querySelectorAll('#orient button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    refresh();
+  }));
+  $('#download').addEventListener('click', download);
+
+  /* ---------- Ajuda ---------- */
+  const helpBtn = $('#helpBtn'), menu = $('#helpMenu'), drawer = $('#drawer'), overlay = $('#overlay');
+  let lastFocus = null;
+  function setMenu(open){ menu.classList.toggle('open', open); helpBtn.setAttribute('aria-expanded', open); if (open) menu.querySelector('button').focus(); }
+  helpBtn.addEventListener('click', e => { e.stopPropagation(); setMenu(!menu.classList.contains('open')); });
+  document.addEventListener('click', e => { if (!menu.contains(e.target) && e.target !== helpBtn) setMenu(false); });
+  function openDrawer(section){
+    lastFocus = document.activeElement;
+    drawer.classList.add('open'); overlay.classList.add('open'); drawer.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('locked');
+    const target = document.getElementById(section);
+    $('#drawerBody').scrollTop = target ? target.offsetTop - 8 : 0;
+    $('#drawerClose').focus();
+  }
+  function closeDrawer(){
+    drawer.classList.remove('open'); overlay.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('locked');
+    if (lastFocus) lastFocus.focus();
+  }
+  function loadExample(){
+    const aoa = [
+      ['Data', 'Cliente', 'Descrição do serviço', 'Valor (R$)', 'Situação'],
+      ['05/10/2026', 'Padaria Pão de Mel', 'Manutenção do forno e troca da resistência elétrica', '850,00', 'Pago'],
+      ['09/10/2026', 'Mercado Bom Preço', 'Instalação de três câmaras frias', '4.200,00', 'Pago'],
+      ['14/10/2026', 'Oficina do Zé', 'Revisão do compressor de ar', '320,00', 'A receber'],
+      ['18/10/2026', 'Restaurante Sabor da Terra', 'Limpeza completa do sistema de exaustão da cozinha, incluindo coifa, dutos e ventilador, com troca de filtros e emissão do laudo técnico para a vigilância sanitária', '1.150,00', 'A receber'],
+      ['22/10/2026', 'Farmácia Saúde', 'Visita técnica para orçamento do ar-condicionado', '#DIV/0!', 'Pendente']
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Serviços');
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    loadFile(new File([buf], 'Planilha de exemplo.xlsx'));
+  }
+  document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => {
+    setMenu(false);
+    const v = b.dataset.open;
+    if (v === 'example'){ if (drawer.classList.contains('open')) closeDrawer(); loadExample(); }
+    else openDrawer(v);
+  }));
+  $('#drawerClose').addEventListener('click', closeDrawer);
+  overlay.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (drawer.classList.contains('open')) closeDrawer();
+    else if (menu.classList.contains('open')){ setMenu(false); helpBtn.focus(); }
+  });
+})();
+</script>
+</body>
+</html>
