@@ -20,9 +20,10 @@ local e pode ser reiniciada. Um cliente modificado também pode ignorar o
 registro de conversões. Estes controles não garantem cobrança ou restrição
 comercial de processamento local.
 
-Não há definições SQL versionadas neste repositório. A segurança de RLS e
-RPCs precisa ser confirmada no projeto Supabase. Os nomes de tabelas, grants
-e políticas não devem ser presumidos a partir do frontend.
+O SQL administrativo está em `supabase/admin-panel.sql`, com ativação descrita
+em `ADMIN.md`. As definições originais de cotas não estão versionadas aqui.
+A segurança efetiva de RLS e RPCs precisa ser confirmada no projeto Supabase;
+publicar o frontend não aplica migrações no banco.
 
 ## Verificações pendentes no Supabase
 
@@ -66,7 +67,8 @@ Recomenda-se proteger `main` com revisão obrigatória e verificações automati
 ## Validação local
 
 Executar `npm test` com Node.js 18 ou superior. Os testes usam o código de
-autenticação real do HTML e simulam DOM, SDK, armazenamento e downloads.
+autenticação real do HTML e o módulo administrativo, simulando DOM, SDK,
+armazenamento e downloads.
 Não acessam Supabase e não substituem testes no navegador ou de RLS.
 
 Referências:
